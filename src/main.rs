@@ -36,21 +36,7 @@ fn main() {
     seq.push_right(4);
     seq.push_right(5);
     seq.insert_at_rank(2, 10);
-    seq.remove_by_rank(3);
-
-    // fn vis(node: Option<&Node<(), i32, OrderStatistics>>, prefix: String) {
-    //     if let Some(node) = node {
-    //         println!("{prefix}metadata: {:?}", node.metadata());
-    //         println!("{prefix}key: {:?}", node.key());
-    //         println!("{prefix}value: {:?}", node.value());
-
-    //         println!("{prefix}left:");
-    //         vis(node.left(), format!("{prefix}  "));
-    //         println!("{prefix}right:");
-    //         vis(node.right(), format!("{prefix}  "));
-    //     }
-    // }
-    // vis(seq.root(), "".into());
+    println!("{:?}", seq.remove_by_rank(3).map(|node| *node.value()));
 
     for node in seq.iter() {
         println!("{:?} {}", node.key(), node.value());
