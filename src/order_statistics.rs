@@ -26,6 +26,7 @@ impl<K: Ord, V> Metadata<K, V> for OrderStatistics {
 
 pub trait OsTreeExt<K: Ord, V> {
     fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics>>;
+    fn remove_by_rank(&mut self, rank: usize) -> Option<Box<Node<K, V, OrderStatistics>>>;
 }
 
 pub trait OsNodeExt<K: Ord, V> {
@@ -64,6 +65,14 @@ impl<K: Ord, V> OsTreeExt<K, V> for Tree<K, V, OrderStatistics> {
         }
 
         find_in_node_by_rank(self.root(), rank)
+    }
+
+    fn remove_by_rank(&mut self, rank: usize) -> Option<Box<Node<K, V, OrderStatistics>>> {
+        let root_box = self.root_box_mut();
+        let (left, right) = Node::split_by_rank(root_box.take(), rank);
+        let (node, right) = Node::split_by_rank(right, 1);
+        *root_box = Node::merge(left, right);
+        node
     }
 }
 

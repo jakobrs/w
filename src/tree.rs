@@ -78,13 +78,13 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
     ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>) {
         if let Some(mut node) = node {
             match cmp(&node) {
-                Side::Right => {
+                Side::Left => {
                     let (ll, lr) = Self::split_generic(node.left, cmp);
                     node.left = lr;
                     node.metadata = M::update(Some(&node));
                     (ll, Some(node))
                 }
-                Side::Left => {
+                Side::Right => {
                     let (rl, rr) = Self::split_generic(node.right, cmp);
                     node.right = rl;
                     node.metadata = M::update(Some(&node));
@@ -127,9 +127,9 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
     {
         Self::split_generic(node, &mut |other| {
             if other.key().borrow() < key {
-                Side::Left
-            } else {
                 Side::Right
+            } else {
+                Side::Left
             }
         })
     }
@@ -147,6 +147,20 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
             }
         } else {
             false
+        }
+    }
+
+    pub fn iter(node: Option<&Node<K, V, M>>) -> Iter<'_, K, V, M> {
+        if let Some(ref node) = node {
+            Iter {
+                stack: vec![],
+                curr: Some(node),
+            }
+        } else {
+            Iter {
+                stack: vec![],
+                curr: None,
+            }
         }
     }
 }
