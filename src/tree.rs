@@ -15,10 +15,9 @@ where
     fn update(node: Option<&Node<K, V, Self>>) -> Self;
 }
 
-pub struct NullMetadata;
-impl<K: Ord, V> Metadata<K, V> for NullMetadata {
-    fn update(_node: Option<&Node<K, V, Self>>) -> Self {
-        Self
+impl<K: Ord, V> Metadata<K, V> for () {
+    fn update(_node: Option<&Node<K, V, Self>>) -> () {
+        ()
     }
 }
 
@@ -75,7 +74,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Tree<K: Ord, V, M: Metadata<K, V> = NullMetadata> {
+pub struct Tree<K: Ord, V, M: Metadata<K, V> = ()> {
     root: Option<Box<Node<K, V, M>>>,
 }
 
