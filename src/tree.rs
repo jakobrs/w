@@ -71,71 +71,29 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
             right: None,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Tree<K: Ord, V, M: Metadata<K, V> = ()> {
-    root: Option<Box<Node<K, V, M>>>,
-}
-
-impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
-    pub fn root(&self) -> Option<&Node<K, V, M>> {
-        self.root.as_deref()
-    }
-    pub fn root_box_mut(&mut self) -> &mut Option<Box<Node<K, V, M>>> {
-        &mut self.root
-    }
-
-    pub fn new() -> Self {
-        Self { root: None }
-    }
 
     pub fn split_generic(
-        &mut self,
-        mut cmp: impl FnMut(&Node<K, V, M>) -> Side,
+        node: Option<Box<Node<K, V, M>>>,
+        cmp: &mut impl FnMut(&Node<K, V, M>) -> Side,
     ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>) {
-        fn split_node_before<K: Ord, V, M: Metadata<K, V>>(
-            node: Option<Box<Node<K, V, M>>>,
-            cmp: &mut impl FnMut(&Node<K, V, M>) -> Side,
-        ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>) {
-            if let Some(mut node) = node {
-                match cmp(&node) {
-                    Side::Right => {
-                        let (ll, lr) = split_node_before(node.left, cmp);
-                        node.left = lr;
-                        node.metadata = M::update(Some(&node));
-                        (ll, Some(node))
-                    }
-                    Side::Left => {
-                        let (rl, rr) = split_node_before(node.right, cmp);
-                        node.right = rl;
-                        node.metadata = M::update(Some(&node));
-                        (Some(node), rr)
-                    }
+        if let Some(mut node) = node {
+            match cmp(&node) {
+                Side::Right => {
+                    let (ll, lr) = Self::split_generic(node.left, cmp);
+                    node.left = lr;
+                    node.metadata = M::update(Some(&node));
+                    (ll, Some(node))
                 }
-            } else {
-                (None, None)
+                Side::Left => {
+                    let (rl, rr) = Self::split_generic(node.right, cmp);
+                    node.right = rl;
+                    node.metadata = M::update(Some(&node));
+                    (Some(node), rr)
+                }
             }
+        } else {
+            (None, None)
         }
-
-        split_node_before(self.root.take(), &mut cmp)
-    }
-
-    pub fn split_before<Q>(
-        &mut self,
-        key: &Q,
-    ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>)
-    where
-        K: Borrow<Q>,
-        Q: Ord,
-    {
-        self.split_generic(|other| {
-            if other.key().borrow() < key {
-                Side::Left
-            } else {
-                Side::Right
-            }
-        })
     }
 
     pub fn merge(
@@ -159,11 +117,63 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         }
     }
 
+    pub fn split_before<Q>(
+        node: Option<Box<Node<K, V, M>>>,
+        key: &Q,
+    ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>)
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        Self::split_generic(node, &mut |other| {
+            if other.key().borrow() < key {
+                Side::Left
+            } else {
+                Side::Right
+            }
+        })
+    }
+
+    pub fn contains_key<Q>(node: Option<&Node<K, V, M>>, key: &Q) -> bool
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord,
+    {
+        if let Some(node) = node {
+            match key.cmp(node.key().borrow()) {
+                Ordering::Less => Self::contains_key(node.left(), key),
+                Ordering::Equal => true,
+                Ordering::Greater => Self::contains_key(node.right(), key),
+            }
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Tree<K: Ord, V, M: Metadata<K, V> = ()> {
+    root: Option<Box<Node<K, V, M>>>,
+}
+
+impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
+    pub fn root(&self) -> Option<&Node<K, V, M>> {
+        self.root.as_deref()
+    }
+    pub fn root_box_mut(&mut self) -> &mut Option<Box<Node<K, V, M>>> {
+        &mut self.root
+    }
+
+    pub fn new() -> Self {
+        Self { root: None }
+    }
+
     pub fn insert(&mut self, key: K, value: V) {
-        let (left, right) = self.split_before(&key);
+        let root = self.root.take();
+        let (left, right) = Node::split_before(root, &key);
         let node = Node::new(key, value);
-        let root = Self::merge(left, Some(Box::new(node)));
-        self.root = Self::merge(root, right);
+        let root = Node::merge(left, Some(Box::new(node)));
+        self.root = Node::merge(root, right);
     }
 
     pub fn contains_key<Q>(&self, key: &Q) -> bool
@@ -171,24 +181,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         K: Borrow<Q> + Ord,
         Q: Ord,
     {
-        pub fn node_contains_key<K, V, M, Q>(node: Option<&Node<K, V, M>>, key: &Q) -> bool
-        where
-            K: Borrow<Q> + Ord,
-            Q: Ord,
-            M: Metadata<K, V>,
-        {
-            if let Some(node) = node {
-                match key.cmp(node.key().borrow()) {
-                    Ordering::Less => node_contains_key(node.left(), key),
-                    Ordering::Equal => true,
-                    Ordering::Greater => node_contains_key(node.right(), key),
-                }
-            } else {
-                false
-            }
-        }
-
-        node_contains_key(self.root(), key)
+        Node::contains_key(self.root(), key)
     }
 
     pub fn iter(&self) -> Iter<'_, K, V, M> {

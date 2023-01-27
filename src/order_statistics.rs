@@ -24,11 +24,13 @@ impl<K: Ord, V> Metadata<K, V> for OrderStatistics {
     }
 }
 
-pub trait OsExt<K: Ord, V> {
+pub trait OsTreeExt<K: Ord, V> {
     fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics>>;
+}
 
+pub trait OsNodeExt<K: Ord, V> {
     fn split_by_rank(
-        &mut self,
+        node: Option<Box<Node<K, V, OrderStatistics>>>,
         rank: usize,
     ) -> (
         Option<Box<Node<K, V, OrderStatistics>>>,
@@ -36,7 +38,7 @@ pub trait OsExt<K: Ord, V> {
     );
 }
 
-impl<K: Ord, V> OsExt<K, V> for Tree<K, V, OrderStatistics> {
+impl<K: Ord, V> OsTreeExt<K, V> for Tree<K, V, OrderStatistics> {
     fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics>> {
         fn find_in_node_by_rank<K: Ord, V>(
             node: Option<&Node<K, V, OrderStatistics>>,
@@ -63,15 +65,17 @@ impl<K: Ord, V> OsExt<K, V> for Tree<K, V, OrderStatistics> {
 
         find_in_node_by_rank(self.root(), rank)
     }
+}
 
+impl<K: Ord, V> OsNodeExt<K, V> for Node<K, V, OrderStatistics> {
     fn split_by_rank(
-        &mut self,
+        node: Option<Box<Node<K, V, OrderStatistics>>>,
         mut rank: usize,
     ) -> (
         Option<Box<Node<K, V, OrderStatistics>>>,
         Option<Box<Node<K, V, OrderStatistics>>>,
     ) {
-        self.split_generic(|node| {
+        Node::split_generic(node, &mut |node| {
             let order_of_left = node.left().map_or(0, |left| left.metadata().order);
 
             if order_of_left >= rank {
@@ -93,16 +97,17 @@ pub trait SequenceExt<T> {
 }
 impl<T> SequenceExt<T> for Sequence<T> {
     fn insert_at_rank(&mut self, rank: usize, value: T) {
-        let (left, right) = self.split_by_rank(rank);
-        let root = Self::merge(left, Some(Box::new(Node::new((), value))));
-        *self.root_box_mut() = Self::merge(root, right);
+        let root_box = self.root_box_mut();
+        let (left, right) = Node::split_by_rank(root_box.take(), rank);
+        let root = Node::merge(left, Some(Box::new(Node::new((), value))));
+        *root_box = Node::merge(root, right);
     }
     fn push_left(&mut self, value: T) {
         let root_box = self.root_box_mut();
-        *root_box = Self::merge(Some(Box::new(Node::new((), value))), root_box.take());
+        *root_box = Node::merge(Some(Box::new(Node::new((), value))), root_box.take());
     }
     fn push_right(&mut self, value: T) {
         let root_box = self.root_box_mut();
-        *root_box = Self::merge(root_box.take(), Some(Box::new(Node::new((), value))));
+        *root_box = Node::merge(root_box.take(), Some(Box::new(Node::new((), value))));
     }
 }
