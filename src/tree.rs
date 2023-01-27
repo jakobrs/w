@@ -1,12 +1,6 @@
 use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
 
-extern "C" {
-    fn rand() -> i32;
-}
-
-fn randint() -> i64 {
-    (unsafe { rand() }) as i64
-}
+use rand::Rng;
 
 pub trait Metadata<K: Ord, V>
 where
@@ -66,7 +60,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
 
             key,
             value,
-            prio: randint(),
+            prio: rand::thread_rng().gen::<i64>(),
             left: None,
             right: None,
         }
