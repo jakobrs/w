@@ -1,6 +1,5 @@
 use w::{
-    order_statistics::{OrderStatistics, OsNodeExt, OsTreeExt, Sequence, SequenceExt},
-    tree::Node,
+    order_statistics::{OrderStatistics, OsTreeExt, Sequence, SequenceExt},
     Tree,
 };
 
