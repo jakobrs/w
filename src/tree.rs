@@ -15,6 +15,12 @@ impl<K: Ord, V> Metadata<K, V> for () {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Side {
+    Left,
+    Right,
+}
+
 #[derive(Debug, Clone)]
 pub struct Node<K: Ord, V, M: Metadata<K, V>> {
     metadata: M,
@@ -86,23 +92,26 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
 
     pub fn split_generic(
         &mut self,
-        mut cmp: impl FnMut(&Node<K, V, M>) -> bool,
+        mut cmp: impl FnMut(&Node<K, V, M>) -> Side,
     ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>) {
         fn split_node_before<K: Ord, V, M: Metadata<K, V>>(
             node: Option<Box<Node<K, V, M>>>,
-            cmp: &mut impl FnMut(&Node<K, V, M>) -> bool,
+            cmp: &mut impl FnMut(&Node<K, V, M>) -> Side,
         ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>) {
             if let Some(mut node) = node {
-                if cmp(&node) {
-                    let (rl, rr) = split_node_before(node.right, cmp);
-                    node.right = rl;
-                    node.metadata = M::update(Some(&node));
-                    (Some(node), rr)
-                } else {
-                    let (ll, lr) = split_node_before(node.left, cmp);
-                    node.left = lr;
-                    node.metadata = M::update(Some(&node));
-                    (ll, Some(node))
+                match cmp(&node) {
+                    Side::Right => {
+                        let (ll, lr) = split_node_before(node.left, cmp);
+                        node.left = lr;
+                        node.metadata = M::update(Some(&node));
+                        (ll, Some(node))
+                    }
+                    Side::Left => {
+                        let (rl, rr) = split_node_before(node.right, cmp);
+                        node.right = rl;
+                        node.metadata = M::update(Some(&node));
+                        (Some(node), rr)
+                    }
                 }
             } else {
                 (None, None)
@@ -120,7 +129,13 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         K: Borrow<Q>,
         Q: Ord,
     {
-        self.split_generic(|other| other.key().borrow() < key)
+        self.split_generic(|other| {
+            if other.key().borrow() < key {
+                Side::Left
+            } else {
+                Side::Right
+            }
+        })
     }
 
     pub fn merge(

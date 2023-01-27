@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Debug};
 
-use crate::tree::{Metadata, Node, Tree};
+use crate::tree::{Metadata, Node, Side, Tree};
 
 #[derive(Debug, Clone, Copy)]
 pub struct OrderStatistics {
@@ -75,10 +75,10 @@ impl<K: Ord, V> OsExt<K, V> for Tree<K, V, OrderStatistics> {
             let order_of_left = node.left().map_or(0, |left| left.metadata().order);
 
             if order_of_left >= rank {
-                false
+                Side::Left
             } else {
                 rank -= order_of_left + 1;
-                true
+                Side::Right
             }
         })
     }
