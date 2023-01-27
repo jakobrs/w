@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, fmt::Debug};
+use std::{
+    alloc::{Allocator, Global},
+    cmp::Ordering,
+    fmt::Debug,
+};
 
 use crate::tree::{Metadata, Node, Tree};
 
@@ -8,7 +12,7 @@ pub struct OrderStatistics {
 }
 
 impl<K: Ord, V> Metadata<K, V> for OrderStatistics {
-    fn update(node: Option<&Node<K, V, Self>>) -> Self {
+    fn update<A: Allocator>(node: Option<&Node<K, V, Self, A>>) -> Self {
         let mut this = OrderStatistics { order: 1 };
 
         if let Some(node) = node {
@@ -24,24 +28,24 @@ impl<K: Ord, V> Metadata<K, V> for OrderStatistics {
     }
 }
 
-pub trait OsExt<K: Ord, V> {
-    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics>>;
+pub trait OsExt<K: Ord, V, A: Allocator> {
+    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics, A>>;
 
     fn split_by_rank(
         &mut self,
         rank: usize,
     ) -> (
-        Option<Box<Node<K, V, OrderStatistics>>>,
-        Option<Box<Node<K, V, OrderStatistics>>>,
+        Option<Box<Node<K, V, OrderStatistics, A>, A>>,
+        Option<Box<Node<K, V, OrderStatistics, A>, A>>,
     );
 }
 
-impl<K: Ord, V> OsExt<K, V> for Tree<K, V, OrderStatistics> {
-    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics>> {
-        fn find_in_node_by_rank<K: Ord, V>(
-            node: Option<&Node<K, V, OrderStatistics>>,
+impl<K: Ord, V, A: Allocator> OsExt<K, V, A> for Tree<K, V, OrderStatistics, A> {
+    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics, A>> {
+        fn find_in_node_by_rank<K: Ord, V, A: Allocator>(
+            node: Option<&Node<K, V, OrderStatistics, A>>,
             rank: usize,
-        ) -> Option<&Node<K, V, OrderStatistics>> {
+        ) -> Option<&Node<K, V, OrderStatistics, A>> {
             if let Some(node) = node {
                 if rank >= node.metadata().order {
                     return None;
@@ -68,8 +72,8 @@ impl<K: Ord, V> OsExt<K, V> for Tree<K, V, OrderStatistics> {
         &mut self,
         mut rank: usize,
     ) -> (
-        Option<Box<Node<K, V, OrderStatistics>>>,
-        Option<Box<Node<K, V, OrderStatistics>>>,
+        Option<Box<Node<K, V, OrderStatistics, A>, A>>,
+        Option<Box<Node<K, V, OrderStatistics, A>, A>>,
     ) {
         self.split_generic(|node| {
             let order_of_left = node.left().map_or(0, |left| left.metadata().order);

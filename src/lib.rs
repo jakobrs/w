@@ -1,3 +1,5 @@
+#![feature(allocator_api)]
+
 pub mod order_statistics;
 pub mod tree;
 

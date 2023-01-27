@@ -1,4 +1,9 @@
-use std::{borrow::Borrow, cmp::Ordering, fmt::Debug};
+use std::{
+    alloc::{Allocator, Global},
+    borrow::Borrow,
+    cmp::Ordering,
+    fmt::Debug,
+};
 
 use rand::Rng;
 
@@ -6,27 +11,27 @@ pub trait Metadata<K: Ord, V>
 where
     Self: Sized,
 {
-    fn update(node: Option<&Node<K, V, Self>>) -> Self;
+    fn update<A: Allocator>(node: Option<&Node<K, V, Self, A>>) -> Self;
 }
 
 impl<K: Ord, V> Metadata<K, V> for () {
-    fn update(_node: Option<&Node<K, V, Self>>) -> () {
+    fn update<A: Allocator>(_node: Option<&Node<K, V, Self, A>>) -> () {
         ()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Node<K: Ord, V, M: Metadata<K, V>> {
+pub struct Node<K: Ord, V, M: Metadata<K, V>, A: Allocator = Global> {
     metadata: M,
 
     key: K,
     value: V,
     prio: i64,
-    left: Option<Box<Self>>,
-    right: Option<Box<Self>>,
+    left: Option<Box<Self, A>>,
+    right: Option<Box<Self, A>>,
 }
 
-impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
+impl<K: Ord, V, M: Metadata<K, V>, A: Allocator> Node<K, V, M, A> {
     pub fn key(&self) -> &K {
         &self.key
     }
@@ -56,7 +61,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
 
     pub fn new(key: K, value: V) -> Self {
         Self {
-            metadata: M::update(None),
+            metadata: M::update::<A>(None),
 
             key,
             value,
@@ -68,15 +73,15 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Tree<K: Ord, V, M: Metadata<K, V> = ()> {
-    root: Option<Box<Node<K, V, M>>>,
+pub struct Tree<K: Ord, V, M: Metadata<K, V> = (), A: Allocator = Global> {
+    root: Option<Box<Node<K, V, M, A>, A>>,
 }
 
-impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
-    pub fn root(&self) -> Option<&Node<K, V, M>> {
+impl<K: Ord, V, M: Metadata<K, V>, A: Allocator> Tree<K, V, M, A> {
+    pub fn root(&self) -> Option<&Node<K, V, M, A>> {
         self.root.as_deref()
     }
-    pub fn root_box_mut(&mut self) -> &mut Option<Box<Node<K, V, M>>> {
+    pub fn root_box_mut(&mut self) -> &mut Option<Box<Node<K, V, M, A>, A>> {
         &mut self.root
     }
 
@@ -86,12 +91,18 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
 
     pub fn split_generic(
         &mut self,
-        mut cmp: impl FnMut(&Node<K, V, M>) -> bool,
-    ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>) {
-        fn split_node_before<K: Ord, V, M: Metadata<K, V>>(
-            node: Option<Box<Node<K, V, M>>>,
-            cmp: &mut impl FnMut(&Node<K, V, M>) -> bool,
-        ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>) {
+        mut cmp: impl FnMut(&Node<K, V, M, A>) -> bool,
+    ) -> (
+        Option<Box<Node<K, V, M, A>, A>>,
+        Option<Box<Node<K, V, M, A>, A>>,
+    ) {
+        fn split_node_before<K: Ord, V, M: Metadata<K, V>, A: Allocator>(
+            node: Option<Box<Node<K, V, M, A>, A>>,
+            cmp: &mut impl FnMut(&Node<K, V, M, A>) -> bool,
+        ) -> (
+            Option<Box<Node<K, V, M, A>, A>>,
+            Option<Box<Node<K, V, M, A>, A>>,
+        ) {
             if let Some(mut node) = node {
                 if cmp(&node) {
                     let (rl, rr) = split_node_before(node.right, cmp);
@@ -115,7 +126,10 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
     pub fn split_before<Q>(
         &mut self,
         key: &Q,
-    ) -> (Option<Box<Node<K, V, M>>>, Option<Box<Node<K, V, M>>>)
+    ) -> (
+        Option<Box<Node<K, V, M, A>, A>>,
+        Option<Box<Node<K, V, M, A>, A>>,
+    )
     where
         K: Borrow<Q>,
         Q: Ord,
@@ -124,9 +138,9 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
     }
 
     pub fn merge(
-        left: Option<Box<Node<K, V, M>>>,
-        right: Option<Box<Node<K, V, M>>>,
-    ) -> Option<Box<Node<K, V, M>>> {
+        left: Option<Box<Node<K, V, M, A>, A>>,
+        right: Option<Box<Node<K, V, M, A>, A>>,
+    ) -> Option<Box<Node<K, V, M, A>, A>> {
         match (left, right) {
             (None, right) => right,
             (left, None) => left,
@@ -144,10 +158,10 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         }
     }
 
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert_in(&mut self, key: K, value: V, alloc: A) {
         let (left, right) = self.split_before(&key);
         let node = Node::new(key, value);
-        let root = Self::merge(left, Some(Box::new(node)));
+        let root = Self::merge(left, Some(Box::new_in(node, alloc)));
         self.root = Self::merge(root, right);
     }
 
@@ -156,11 +170,12 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         K: Borrow<Q> + Ord,
         Q: Ord,
     {
-        pub fn node_contains_key<K, V, M, Q>(node: Option<&Node<K, V, M>>, key: &Q) -> bool
+        pub fn node_contains_key<K, V, M, Q, A>(node: Option<&Node<K, V, M, A>>, key: &Q) -> bool
         where
             K: Borrow<Q> + Ord,
             Q: Ord,
             M: Metadata<K, V>,
+            A: Allocator,
         {
             if let Some(node) = node {
                 match key.cmp(node.key().borrow()) {
@@ -176,7 +191,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         node_contains_key(self.root(), key)
     }
 
-    pub fn iter(&self) -> Iter<'_, K, V, M> {
+    pub fn iter(&self) -> Iter<'_, K, V, M, A> {
         if let Some(ref root) = self.root {
             Iter {
                 stack: vec![],
@@ -191,13 +206,22 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
     }
 }
 
-pub struct Iter<'a, K: Ord, V, M: Metadata<K, V>> {
-    stack: Vec<&'a Node<K, V, M>>,
-    curr: Option<&'a Node<K, V, M>>,
+impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
+    pub fn insert(&mut self, key: K, value: V) {
+        let (left, right) = self.split_before(&key);
+        let node = Node::new(key, value);
+        let root = Self::merge(left, Some(Box::new(node)));
+        self.root = Self::merge(root, right);
+    }
 }
 
-impl<'a, K: Ord, V, M: Metadata<K, V>> Iterator for Iter<'a, K, V, M> {
-    type Item = &'a Node<K, V, M>;
+pub struct Iter<'a, K: Ord, V, M: Metadata<K, V>, A: Allocator> {
+    stack: Vec<&'a Node<K, V, M, A>>,
+    curr: Option<&'a Node<K, V, M, A>>,
+}
+
+impl<'a, K: Ord, V, M: Metadata<K, V>, A: Allocator> Iterator for Iter<'a, K, V, M, A> {
+    type Item = &'a Node<K, V, M, A>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(curr) = self.curr.take() {
@@ -216,5 +240,5 @@ impl<'a, K: Ord, V, M: Metadata<K, V>> Iterator for Iter<'a, K, V, M> {
     }
 }
 
-pub type Map<K, V> = Tree<K, V>;
-pub type Set<T> = Tree<T, ()>;
+pub type Map<K, V, A = Global> = Tree<K, V, A>;
+pub type Set<T, A = Global> = Tree<T, (), A>;
