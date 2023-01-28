@@ -1,43 +1,19 @@
-use w::{
-    order_statistics::{OrderStatistics, OsTreeExt, Sequence, SequenceExt},
-    Tree,
-};
+use w::{order_statistics::OrderStatistics, Tree};
 
 fn main() {
-    let mut set = Tree::<i32, (), OrderStatistics>::new();
+    let mut map = Tree::<i32, i32, OrderStatistics>::new();
 
-    set.insert(1, ());
-    set.insert(2, ());
-    set.insert(3, ());
-    set.insert(2, ());
-    set.insert(0, ());
-    set.insert(10, ());
-    set.insert(-3, ());
-    set.insert(4, ());
+    map.insert(3, 2);
+    map.insert(1, 5);
+    map.insert(6, 3);
+    map.insert(3, 4);
+    map.insert(0, 10);
 
-    println!("{:?}", set.contains_key(&2));
-    println!("{:?}", set.find_by_rank(5).unwrap().key());
+    println!("{}", map.root().map_or(0, |node| node.metadata().order));
 
-    // println!(
-    //     "{:#?}",
-    //     w::tree::Node::split_before(set.root_box_mut().take(), &2)
-    // );
-
-    for node in set.iter() {
-        println!("{} {:?}", node.key(), node.value());
+    for node in map.iter() {
+        println!("{} {}", node.key(), node.value());
     }
 
-    let mut seq = Sequence::<i32>::new();
-
-    seq.insert((), 1);
-    seq.insert((), 2);
-    seq.push_left(3);
-    seq.push_right(4);
-    seq.push_right(5);
-    seq.insert_at_rank(2, 10);
-    println!("{:?}", seq.remove_by_rank(3).map(|node| *node.value()));
-
-    for node in seq.iter() {
-        println!("{:?} {}", node.key(), node.value());
-    }
+    println!("map[6] = {}", map[&6]);
 }
