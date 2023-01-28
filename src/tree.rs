@@ -261,7 +261,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
     pub fn root_mut(&mut self) -> Option<&mut Node<K, V, M>> {
         self.root.as_deref_mut()
     }
-    pub fn root_box_mut(&mut self) -> &mut Option<Box<Node<K, V, M>>> {
+    pub fn root_box_mut(&mut self) -> &mut BoxedNode<K, V, M> {
         &mut self.root
     }
 
