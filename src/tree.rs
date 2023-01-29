@@ -15,9 +15,7 @@ where
 }
 
 impl<K: Ord, V> Metadata<K, V> for () {
-    fn update<const DEDUP: bool>(_node: Option<&Node<K, V, Self, DEDUP>>) -> () {
-        ()
-    }
+    fn update<const DEDUP: bool>(_node: Option<&Node<K, V, Self, DEDUP>>) -> Self {}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -311,7 +309,7 @@ impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Node<K, V, M, DEDUP> {
     }
 
     pub fn iter(node: Option<&Node<K, V, M, DEDUP>>) -> Iter<'_, K, V, M, DEDUP> {
-        if let Some(ref node) = node {
+        if let Some(node) = node {
             Iter {
                 stack: vec![],
                 curr: Some(node),
@@ -420,6 +418,16 @@ impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Tree<K, V, M, DEDUP> {
         Q: Ord,
     {
         Node::remove(self.find_slot_mut(key))
+    }
+}
+
+impl<K, V, M, const DEDUP: bool> Default for Tree<K, V, M, DEDUP>
+where
+    K: Ord,
+    M: Metadata<K, V>,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 

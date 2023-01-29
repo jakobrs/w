@@ -28,6 +28,7 @@ pub trait OsTreeExt<K: Ord, V, const DEDUP: bool> {
     fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics, DEDUP>>;
     fn remove_by_rank(&mut self, rank: usize) -> BoxedNode<K, V, OrderStatistics, DEDUP>;
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
 }
 
 pub trait OsNodeExt<K: Ord, V, const DEDUP: bool> {
@@ -79,6 +80,10 @@ impl<K: Ord, V, const DEDUP: bool> OsTreeExt<K, V, DEDUP> for Tree<K, V, OrderSt
     fn len(&self) -> usize {
         self.root().map_or(0, |node| node.metadata().order)
     }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<K: Ord, V, const DEDUP: bool> OsNodeExt<K, V, DEDUP> for Node<K, V, OrderStatistics, DEDUP> {
@@ -118,13 +123,13 @@ impl<T> SequenceExt<T> for Sequence<T> {
             node,
             &mut |_node, against| {
                 let order_of_left = against.left().map_or(0, |node| node.metadata().order);
-                if rank == order_of_left {
-                    Ordering::Equal
-                } else if rank < order_of_left {
-                    Ordering::Less
-                } else {
-                    rank -= order_of_left + 1;
-                    Ordering::Greater
+                match rank.cmp(&order_of_left) {
+                    Ordering::Less => Ordering::Less,
+                    Ordering::Equal => Ordering::Equal,
+                    Ordering::Greater => {
+                        rank -= order_of_left + 1;
+                        Ordering::Greater
+                    }
                 }
             },
         ));
