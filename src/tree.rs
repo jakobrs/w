@@ -106,13 +106,13 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
                 Side::Left => {
                     let (ll, lr) = Self::split_generic(node.left, cmp);
                     node.left = lr;
-                    node.metadata = M::update(Some(&node));
+                    node.update_metadata();
                     (ll, Some(node))
                 }
                 Side::Right => {
                     let (rl, rr) = Self::split_generic(node.right, cmp);
                     node.right = rl;
-                    node.metadata = M::update(Some(&node));
+                    node.update_metadata();
                     (Some(node), rr)
                 }
             }
@@ -128,11 +128,11 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
             (Some(mut left), Some(mut right)) => {
                 if left.prio > right.prio {
                     left.right = Self::merge(left.right, Some(right));
-                    left.metadata = M::update(Some(&left));
+                    left.update_metadata();
                     Some(left)
                 } else {
                     right.left = Self::merge(Some(left), right.left);
-                    right.metadata = M::update(Some(&right));
+                    right.update_metadata();
                     Some(right)
                 }
             }
