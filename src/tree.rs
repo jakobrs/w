@@ -68,11 +68,17 @@ impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Node<K, V, M, DEDUP> {
     pub fn left_mut(&mut self) -> Option<&mut Self> {
         self.left.as_deref_mut()
     }
+    pub fn left_slot_mut(&mut self) -> &mut BoxedNode<K, V, M, DEDUP> {
+        &mut self.left
+    }
     pub fn right(&self) -> Option<&Self> {
         self.right.as_deref()
     }
     pub fn right_mut(&mut self) -> Option<&mut Self> {
         self.right.as_deref_mut()
+    }
+    pub fn right_slot_mut(&mut self) -> &mut BoxedNode<K, V, M, DEDUP> {
+        &mut self.right
     }
 
     pub fn new(key: K, value: V) -> Self {
@@ -335,7 +341,7 @@ impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Tree<K, V, M, DEDUP> {
     pub fn root_mut(&mut self) -> Option<&mut Node<K, V, M, DEDUP>> {
         self.root.as_deref_mut()
     }
-    pub fn root_box_mut(&mut self) -> &mut BoxedNode<K, V, M, DEDUP> {
+    pub fn root_slot_mut(&mut self) -> &mut BoxedNode<K, V, M, DEDUP> {
         &mut self.root
     }
 
@@ -409,7 +415,7 @@ impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Tree<K, V, M, DEDUP> {
         K: Borrow<Q>,
         Q: Ord,
     {
-        Node::find_slot_mut(self.root_box_mut(), key)
+        Node::find_slot_mut(self.root_slot_mut(), key)
     }
 
     pub fn remove_key<Q>(&mut self, key: &Q) -> Option<(K, V)>

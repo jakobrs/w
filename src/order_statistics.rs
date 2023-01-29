@@ -70,7 +70,7 @@ impl<K: Ord, V, const DEDUP: bool> OsTreeExt<K, V, DEDUP> for Tree<K, V, OrderSt
     }
 
     fn remove_by_rank(&mut self, rank: usize) -> BoxedNode<K, V, OrderStatistics, DEDUP> {
-        let root_box = self.root_box_mut();
+        let root_box = self.root_slot_mut();
         let (left, right) = Node::split_by_rank(root_box.take(), rank);
         let (node, right) = Node::split_by_rank(right, 1);
         *root_box = Node::merge(left, right);
@@ -116,7 +116,7 @@ pub trait SequenceExt<T> {
 }
 impl<T> SequenceExt<T> for Sequence<T> {
     fn insert_at_rank(&mut self, mut rank: usize, value: T) {
-        let root_box = self.root_box_mut();
+        let root_box = self.root_slot_mut();
         let node = Box::new(Node::new((), value));
         *root_box = Some(Node::insert_generic(
             root_box.take(),
@@ -135,12 +135,12 @@ impl<T> SequenceExt<T> for Sequence<T> {
         ));
     }
     fn push_left(&mut self, value: T) {
-        let root_box = self.root_box_mut();
+        let root_box = self.root_slot_mut();
         let node = Node::new_boxed((), value);
         *root_box = Node::merge(node, root_box.take());
     }
     fn push_right(&mut self, value: T) {
-        let root_box = self.root_box_mut();
+        let root_box = self.root_slot_mut();
         let node = Node::new_boxed((), value);
         *root_box = Node::merge(root_box.take(), node);
     }
