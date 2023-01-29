@@ -1,10 +1,10 @@
 use w::{
     order_statistics::{OrderStatistics, OsTreeExt},
-    tree::Node, Tree, Map,
+    tree::Node,
+    Map, Tree,
 };
 
 fn main() {
-
     let mut map = Tree::<i32, i32, OrderStatistics, true>::new();
 
     map.insert(1, 3);
@@ -63,9 +63,21 @@ fn main() {
         })
     }
 
-    println!("{}", upper_bound(map.root(), 7) - lower_bound(map.root(), 2));
+    println!(
+        "{}",
+        upper_bound(map.root(), 7) - lower_bound(map.root(), 2)
+    );
 
-    let other_map: Map<i32, i32> = [(1, 2), (3, 2), (-1, 7), (0, 4)].into_iter().collect();
+    let mut other_map: Map<i32, i32> = [(1, 2), (3, 2), (-1, 7), (0, 4)].into_iter().collect();
 
-    println!("{:?}", other_map.iter().map(|node| (node.key(), node.value())).collect::<Vec<_>>());
+    println!("Removed pair: {:?}", other_map.remove_key(&3));
+    println!("Removed pair: {:?}", other_map.remove_key(&3));
+
+    println!(
+        "{:?}",
+        other_map
+            .iter()
+            .map(|node| (node.key(), node.value()))
+            .collect::<Vec<_>>()
+    );
 }

@@ -273,6 +273,43 @@ impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Node<K, V, M, DEDUP> {
         })
     }
 
+    pub fn find_slot_mut<'a, Q>(
+        node: &'a mut BoxedNode<K, V, M, DEDUP>,
+        key: &Q,
+    ) -> &'a mut BoxedNode<K, V, M, DEDUP>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        let comparison;
+        {
+            let Some(ref mut node_inner) = node else { return node; };
+
+            comparison = key.cmp(node_inner.key().borrow());
+
+            if comparison == Ordering::Equal {
+                return node;
+            }
+        }
+
+        let Some(ref mut node_inner) = node else { unreachable!() };
+
+        match comparison {
+            Ordering::Less => return Self::find_slot_mut(&mut node_inner.left, key),
+            Ordering::Greater => return Self::find_slot_mut(&mut node_inner.right, key),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn remove(node: &mut BoxedNode<K, V, M, DEDUP>) -> Option<(K, V)> {
+        if let Some(node_inner) = node.take() {
+            *node = Node::merge(node_inner.left, node_inner.right).take();
+            Some((node_inner.key, node_inner.value))
+        } else {
+            None
+        }
+    }
+
     pub fn iter(node: Option<&Node<K, V, M, DEDUP>>) -> Iter<'_, K, V, M, DEDUP> {
         if let Some(ref node) = node {
             Iter {
@@ -368,6 +405,22 @@ impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Tree<K, V, M, DEDUP> {
     {
         Node::find_mut(self.root_mut(), key).map(|node| node.value_mut())
     }
+
+    pub fn find_slot_mut<'a, Q>(&'a mut self, key: &Q) -> &'a mut BoxedNode<K, V, M, DEDUP>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        Node::find_slot_mut(self.root_box_mut(), key)
+    }
+
+    pub fn remove_key<Q>(&mut self, key: &Q) -> Option<(K, V)>
+    where
+        K: Borrow<Q>,
+        Q: Ord,
+    {
+        Node::remove(self.find_slot_mut(key))
+    }
 }
 
 impl<K, V, M, Q, const DEDUP: bool> Index<&Q> for Tree<K, V, M, DEDUP>
@@ -429,7 +482,11 @@ where
     }
 }
 
-impl<K, M, const DEDUP: bool> FromIterator<K> for Tree<K, (), M, DEDUP> where K: Ord, M: Metadata<K, ()> {
+impl<K, M, const DEDUP: bool> FromIterator<K> for Tree<K, (), M, DEDUP>
+where
+    K: Ord,
+    M: Metadata<K, ()>,
+{
     fn from_iter<T: IntoIterator<Item = K>>(iter: T) -> Self {
         let mut result = Self::new();
         result.extend(iter);
