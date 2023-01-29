@@ -8,7 +8,7 @@ pub struct OrderStatistics {
 }
 
 impl<K: Ord, V> Metadata<K, V> for OrderStatistics {
-    fn update(node: Option<&Node<K, V, Self>>) -> Self {
+    fn update<const DEDUP: bool>(node: Option<&Node<K, V, Self, DEDUP>>) -> Self {
         let mut this = OrderStatistics { order: 1 };
 
         if let Some(node) = node {
@@ -24,28 +24,28 @@ impl<K: Ord, V> Metadata<K, V> for OrderStatistics {
     }
 }
 
-pub trait OsTreeExt<K: Ord, V> {
-    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics>>;
-    fn remove_by_rank(&mut self, rank: usize) -> BoxedNode<K, V, OrderStatistics>;
+pub trait OsTreeExt<K: Ord, V, const DEDUP: bool> {
+    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics, DEDUP>>;
+    fn remove_by_rank(&mut self, rank: usize) -> BoxedNode<K, V, OrderStatistics, DEDUP>;
     fn len(&self) -> usize;
 }
 
-pub trait OsNodeExt<K: Ord, V> {
+pub trait OsNodeExt<K: Ord, V, const DEDUP: bool> {
     fn split_by_rank(
-        node: BoxedNode<K, V, OrderStatistics>,
+        node: BoxedNode<K, V, OrderStatistics, DEDUP>,
         rank: usize,
     ) -> (
-        BoxedNode<K, V, OrderStatistics>,
-        BoxedNode<K, V, OrderStatistics>,
+        BoxedNode<K, V, OrderStatistics, DEDUP>,
+        BoxedNode<K, V, OrderStatistics, DEDUP>,
     );
 }
 
-impl<K: Ord, V> OsTreeExt<K, V> for Tree<K, V, OrderStatistics> {
-    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics>> {
-        fn find_in_node_by_rank<K: Ord, V>(
-            node: Option<&Node<K, V, OrderStatistics>>,
+impl<K: Ord, V, const DEDUP: bool> OsTreeExt<K, V, DEDUP> for Tree<K, V, OrderStatistics, DEDUP> {
+    fn find_by_rank(&self, rank: usize) -> Option<&Node<K, V, OrderStatistics, DEDUP>> {
+        fn find_in_node_by_rank<K: Ord, V, const DEDUP: bool>(
+            node: Option<&Node<K, V, OrderStatistics, DEDUP>>,
             rank: usize,
-        ) -> Option<&Node<K, V, OrderStatistics>> {
+        ) -> Option<&Node<K, V, OrderStatistics, DEDUP>> {
             if let Some(node) = node {
                 if rank >= node.metadata().order {
                     return None;
@@ -68,7 +68,7 @@ impl<K: Ord, V> OsTreeExt<K, V> for Tree<K, V, OrderStatistics> {
         find_in_node_by_rank(self.root(), rank)
     }
 
-    fn remove_by_rank(&mut self, rank: usize) -> BoxedNode<K, V, OrderStatistics> {
+    fn remove_by_rank(&mut self, rank: usize) -> BoxedNode<K, V, OrderStatistics, DEDUP> {
         let root_box = self.root_box_mut();
         let (left, right) = Node::split_by_rank(root_box.take(), rank);
         let (node, right) = Node::split_by_rank(right, 1);
@@ -81,13 +81,13 @@ impl<K: Ord, V> OsTreeExt<K, V> for Tree<K, V, OrderStatistics> {
     }
 }
 
-impl<K: Ord, V> OsNodeExt<K, V> for Node<K, V, OrderStatistics> {
+impl<K: Ord, V, const DEDUP: bool> OsNodeExt<K, V, DEDUP> for Node<K, V, OrderStatistics, DEDUP> {
     fn split_by_rank(
-        node: BoxedNode<K, V, OrderStatistics>,
+        node: BoxedNode<K, V, OrderStatistics, DEDUP>,
         mut rank: usize,
     ) -> (
-        BoxedNode<K, V, OrderStatistics>,
-        BoxedNode<K, V, OrderStatistics>,
+        BoxedNode<K, V, OrderStatistics, DEDUP>,
+        BoxedNode<K, V, OrderStatistics, DEDUP>,
     ) {
         Node::split_generic(node, &mut |node| {
             let order_of_left = node.left().map_or(0, |left| left.metadata().order);
@@ -102,7 +102,7 @@ impl<K: Ord, V> OsNodeExt<K, V> for Node<K, V, OrderStatistics> {
     }
 }
 
-pub type Sequence<T> = Tree<(), T, OrderStatistics>;
+pub type Sequence<T> = Tree<(), T, OrderStatistics, false>;
 
 pub trait SequenceExt<T> {
     fn insert_at_rank(&mut self, rank: usize, value: T);
@@ -118,11 +118,13 @@ impl<T> SequenceExt<T> for Sequence<T> {
             node,
             &mut |_node, against| {
                 let order_of_left = against.left().map_or(0, |node| node.metadata().order);
-                if order_of_left >= rank {
-                    Side::Left
+                if rank == order_of_left {
+                    Ordering::Equal
+                } else if rank < order_of_left {
+                    Ordering::Less
                 } else {
                     rank -= order_of_left + 1;
-                    Side::Right
+                    Ordering::Greater
                 }
             },
         ));

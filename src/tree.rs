@@ -11,11 +11,11 @@ pub trait Metadata<K: Ord, V>
 where
     Self: Sized,
 {
-    fn update(node: Option<&Node<K, V, Self>>) -> Self;
+    fn update<const DEDUP: bool>(node: Option<&Node<K, V, Self, DEDUP>>) -> Self;
 }
 
 impl<K: Ord, V> Metadata<K, V> for () {
-    fn update(_node: Option<&Node<K, V, Self>>) -> () {
+    fn update<const DEDUP: bool>(_node: Option<&Node<K, V, Self, DEDUP>>) -> () {
         ()
     }
 }
@@ -37,7 +37,7 @@ impl Side {
 }
 
 #[derive(Debug, Clone)]
-pub struct Node<K: Ord, V, M: Metadata<K, V>> {
+pub struct Node<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> {
     metadata: M,
 
     key: K,
@@ -47,9 +47,9 @@ pub struct Node<K: Ord, V, M: Metadata<K, V>> {
     right: Option<Box<Self>>,
 }
 
-pub type BoxedNode<K, V, M> = Option<Box<Node<K, V, M>>>;
+pub type BoxedNode<K, V, M, const DEDUP: bool> = Option<Box<Node<K, V, M, DEDUP>>>;
 
-impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
+impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Node<K, V, M, DEDUP> {
     pub fn key(&self) -> &K {
         &self.key
     }
@@ -79,7 +79,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
 
     pub fn new(key: K, value: V) -> Self {
         Self {
-            metadata: M::update(None),
+            metadata: M::update::<DEDUP>(None),
 
             key,
             value,
@@ -93,14 +93,14 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
         self.metadata = M::update(Some(self));
     }
 
-    pub fn new_boxed(key: K, value: V) -> BoxedNode<K, V, M> {
+    pub fn new_boxed(key: K, value: V) -> BoxedNode<K, V, M, DEDUP> {
         Some(Box::new(Node::new(key, value)))
     }
 
     pub fn split_generic(
-        node: BoxedNode<K, V, M>,
-        cmp: &mut impl FnMut(&Node<K, V, M>) -> Side,
-    ) -> (BoxedNode<K, V, M>, BoxedNode<K, V, M>) {
+        node: BoxedNode<K, V, M, DEDUP>,
+        cmp: &mut impl FnMut(&Node<K, V, M, DEDUP>) -> Side,
+    ) -> (BoxedNode<K, V, M, DEDUP>, BoxedNode<K, V, M, DEDUP>) {
         if let Some(mut node) = node {
             match cmp(&node) {
                 Side::Left => {
@@ -121,7 +121,35 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
         }
     }
 
-    pub fn merge(left: BoxedNode<K, V, M>, right: BoxedNode<K, V, M>) -> BoxedNode<K, V, M> {
+    pub fn split_remove_generic(
+        node: BoxedNode<K, V, M, DEDUP>,
+        cmp: &mut impl FnMut(&Node<K, V, M, DEDUP>) -> Ordering,
+    ) -> (BoxedNode<K, V, M, DEDUP>, BoxedNode<K, V, M, DEDUP>) {
+        if let Some(mut node) = node {
+            match cmp(&node) {
+                Ordering::Equal if DEDUP => (node.left, node.right),
+                Ordering::Less | Ordering::Equal => {
+                    let (ll, lr) = Self::split_remove_generic(node.left, cmp);
+                    node.left = lr;
+                    node.update_metadata();
+                    (ll, Some(node))
+                }
+                Ordering::Greater => {
+                    let (rl, rr) = Self::split_remove_generic(node.right, cmp);
+                    node.right = rl;
+                    node.update_metadata();
+                    (Some(node), rr)
+                }
+            }
+        } else {
+            (None, None)
+        }
+    }
+
+    pub fn merge(
+        left: BoxedNode<K, V, M, DEDUP>,
+        right: BoxedNode<K, V, M, DEDUP>,
+    ) -> BoxedNode<K, V, M, DEDUP> {
         match (left, right) {
             (None, right) => right,
             (left, None) => left,
@@ -139,14 +167,22 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
         }
     }
 
+    /// NOTE: if cmp returns Equal and DEDUP = false, the node will be inserted on the *LEFT*. (this matters for side-effecting comparators)
     pub fn insert_generic(
-        node: BoxedNode<K, V, M>,
-        new_node: Box<Node<K, V, M>>,
-        cmp: &mut impl FnMut(&Node<K, V, M>, &Box<Node<K, V, M>>) -> Side,
-    ) -> Box<Node<K, V, M>> {
+        node: BoxedNode<K, V, M, DEDUP>,
+        mut new_node: Box<Node<K, V, M, DEDUP>>,
+        cmp: &mut impl FnMut(&Node<K, V, M, DEDUP>, &Box<Node<K, V, M, DEDUP>>) -> Ordering,
+    ) -> Box<Node<K, V, M, DEDUP>> {
         if let Some(mut node) = node {
             match cmp(&new_node, &node) {
-                Side::Left => {
+                Ordering::Equal if DEDUP => {
+                    new_node.left = node.left;
+                    new_node.right = node.right;
+                    new_node.prio = node.prio; // might not be correct
+                    new_node.update_metadata();
+                    new_node
+                }
+                Ordering::Less | Ordering::Equal => {
                     let mut subtree = Self::insert_generic(node.left, new_node, cmp);
                     if subtree.prio > node.prio {
                         node.left = subtree.right;
@@ -160,7 +196,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
                         node
                     }
                 }
-                Side::Right => {
+                Ordering::Greater => {
                     let mut subtree = Self::insert_generic(node.right, new_node, cmp);
                     if subtree.prio > node.prio {
                         node.right = subtree.left;
@@ -181,9 +217,9 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
     }
 
     pub fn split_before<Q>(
-        node: BoxedNode<K, V, M>,
+        node: BoxedNode<K, V, M, DEDUP>,
         key: &Q,
-    ) -> (BoxedNode<K, V, M>, BoxedNode<K, V, M>)
+    ) -> (BoxedNode<K, V, M, DEDUP>, BoxedNode<K, V, M, DEDUP>)
     where
         K: Borrow<Q>,
         Q: Ord,
@@ -191,7 +227,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
         Self::split_generic(node, &mut |other| Side::from_cmp(key, other.key().borrow()))
     }
 
-    pub fn contains_key<Q>(node: Option<&Node<K, V, M>>, key: &Q) -> bool
+    pub fn contains_key<Q>(node: Option<&Node<K, V, M, DEDUP>>, key: &Q) -> bool
     where
         K: Borrow<Q>,
         Q: Ord,
@@ -207,7 +243,10 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
         }
     }
 
-    pub fn find<'a, Q>(node: Option<&'a Node<K, V, M>>, key: &Q) -> Option<&'a Node<K, V, M>>
+    pub fn find<'a, Q>(
+        node: Option<&'a Node<K, V, M, DEDUP>>,
+        key: &Q,
+    ) -> Option<&'a Node<K, V, M, DEDUP>>
     where
         K: Borrow<Q>,
         Q: Ord,
@@ -220,9 +259,9 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
     }
 
     pub fn find_mut<'a, Q>(
-        node: Option<&'a mut Node<K, V, M>>,
+        node: Option<&'a mut Node<K, V, M, DEDUP>>,
         key: &Q,
-    ) -> Option<&'a mut Node<K, V, M>>
+    ) -> Option<&'a mut Node<K, V, M, DEDUP>>
     where
         K: Borrow<Q>,
         Q: Ord,
@@ -234,7 +273,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
         })
     }
 
-    pub fn iter(node: Option<&Node<K, V, M>>) -> Iter<'_, K, V, M> {
+    pub fn iter(node: Option<&Node<K, V, M, DEDUP>>) -> Iter<'_, K, V, M, DEDUP> {
         if let Some(ref node) = node {
             Iter {
                 stack: vec![],
@@ -250,18 +289,18 @@ impl<K: Ord, V, M: Metadata<K, V>> Node<K, V, M> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Tree<K: Ord, V, M: Metadata<K, V> = ()> {
-    root: BoxedNode<K, V, M>,
+pub struct Tree<K: Ord, V, M: Metadata<K, V> = (), const DEDUP: bool = false> {
+    root: BoxedNode<K, V, M, DEDUP>,
 }
 
-impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
-    pub fn root(&self) -> Option<&Node<K, V, M>> {
+impl<K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Tree<K, V, M, DEDUP> {
+    pub fn root(&self) -> Option<&Node<K, V, M, DEDUP>> {
         self.root.as_deref()
     }
-    pub fn root_mut(&mut self) -> Option<&mut Node<K, V, M>> {
+    pub fn root_mut(&mut self) -> Option<&mut Node<K, V, M, DEDUP>> {
         self.root.as_deref_mut()
     }
-    pub fn root_box_mut(&mut self) -> &mut BoxedNode<K, V, M> {
+    pub fn root_box_mut(&mut self) -> &mut BoxedNode<K, V, M, DEDUP> {
         &mut self.root
     }
 
@@ -274,7 +313,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         self.root = Some(Node::insert_generic(
             self.root.take(),
             node,
-            &mut |node, at| Side::from_cmp(&node.key, &at.key),
+            &mut |node, at| node.key.cmp(&at.key),
         ));
     }
 
@@ -286,7 +325,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         Node::contains_key(self.root(), key)
     }
 
-    pub fn iter(&self) -> Iter<'_, K, V, M> {
+    pub fn iter(&self) -> Iter<'_, K, V, M, DEDUP> {
         if let Some(ref root) = self.root {
             Iter {
                 stack: vec![],
@@ -300,14 +339,14 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
         }
     }
 
-    pub fn find<'a, Q>(&'a self, key: &Q) -> Option<&'a Node<K, V, M>>
+    pub fn find<'a, Q>(&'a self, key: &Q) -> Option<&'a Node<K, V, M, DEDUP>>
     where
         K: Borrow<Q>,
         Q: Ord,
     {
         Node::find(self.root(), key)
     }
-    pub fn find_mut<'a, Q>(&'a mut self, key: &Q) -> Option<&'a mut Node<K, V, M>>
+    pub fn find_mut<'a, Q>(&'a mut self, key: &Q) -> Option<&'a mut Node<K, V, M, DEDUP>>
     where
         K: Borrow<Q>,
         Q: Ord,
@@ -331,7 +370,7 @@ impl<K: Ord, V, M: Metadata<K, V>> Tree<K, V, M> {
     }
 }
 
-impl<K, V, M, Q> Index<&Q> for Tree<K, V, M>
+impl<K, V, M, Q, const DEDUP: bool> Index<&Q> for Tree<K, V, M, DEDUP>
 where
     K: Ord + Borrow<Q>,
     Q: Ord,
@@ -343,7 +382,7 @@ where
         self.get(index).unwrap()
     }
 }
-impl<K, V, M, Q> IndexMut<&Q> for Tree<K, V, M>
+impl<K, V, M, Q, const DEDUP: bool> IndexMut<&Q> for Tree<K, V, M, DEDUP>
 where
     K: Ord + Borrow<Q>,
     Q: Ord,
@@ -354,13 +393,13 @@ where
     }
 }
 
-pub struct Iter<'a, K: Ord, V, M: Metadata<K, V>> {
-    stack: Vec<&'a Node<K, V, M>>,
-    curr: Option<&'a Node<K, V, M>>,
+pub struct Iter<'a, K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> {
+    stack: Vec<&'a Node<K, V, M, DEDUP>>,
+    curr: Option<&'a Node<K, V, M, DEDUP>>,
 }
 
-impl<'a, K: Ord, V, M: Metadata<K, V>> Iterator for Iter<'a, K, V, M> {
-    type Item = &'a Node<K, V, M>;
+impl<'a, K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> Iterator for Iter<'a, K, V, M, DEDUP> {
+    type Item = &'a Node<K, V, M, DEDUP>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(curr) = self.curr.take() {
@@ -379,5 +418,7 @@ impl<'a, K: Ord, V, M: Metadata<K, V>> Iterator for Iter<'a, K, V, M> {
     }
 }
 
-pub type Map<K, V> = Tree<K, V>;
-pub type Set<T> = Tree<T, ()>;
+pub type Map<K, V> = Tree<K, V, (), true>;
+pub type Set<T> = Tree<T, (), (), true>;
+pub type Multimap<K, V> = Tree<K, V, (), false>;
+pub type Multiset<T> = Tree<T, (), (), false>;
