@@ -393,6 +393,50 @@ where
     }
 }
 
+impl<K, V, M, const DEDUP: bool> Extend<(K, V)> for Tree<K, V, M, DEDUP>
+where
+    K: Ord,
+    M: Metadata<K, V>,
+{
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+        for (k, v) in iter {
+            self.insert(k, v);
+        }
+    }
+}
+
+impl<K, M, const DEDUP: bool> Extend<K> for Tree<K, (), M, DEDUP>
+where
+    K: Ord,
+    M: Metadata<K, ()>,
+{
+    fn extend<T: IntoIterator<Item = K>>(&mut self, iter: T) {
+        for k in iter {
+            self.insert(k, ());
+        }
+    }
+}
+
+impl<K, V, M, const DEDUP: bool> FromIterator<(K, V)> for Tree<K, V, M, DEDUP>
+where
+    K: Ord,
+    M: Metadata<K, V>,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        let mut result = Self::new();
+        result.extend(iter);
+        result
+    }
+}
+
+impl<K, M, const DEDUP: bool> FromIterator<K> for Tree<K, (), M, DEDUP> where K: Ord, M: Metadata<K, ()> {
+    fn from_iter<T: IntoIterator<Item = K>>(iter: T) -> Self {
+        let mut result = Self::new();
+        result.extend(iter);
+        result
+    }
+}
+
 pub struct Iter<'a, K: Ord, V, M: Metadata<K, V>, const DEDUP: bool> {
     stack: Vec<&'a Node<K, V, M, DEDUP>>,
     curr: Option<&'a Node<K, V, M, DEDUP>>,

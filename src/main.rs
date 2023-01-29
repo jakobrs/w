@@ -1,38 +1,46 @@
-use w::{order_statistics::{OrderStatistics, OsTreeExt, Sequence, SequenceExt}, tree::Node, Tree, Map};
+use w::{
+    order_statistics::{OrderStatistics, OsTreeExt},
+    tree::Node, Tree, Map,
+};
 
 fn main() {
-    let mut map = Tree::<i32, i32, OrderStatistics>::new();
 
-    map.insert(3, 2);
-    map.insert(1, 5);
-    map.insert(6, 3);
-    map.insert(3, 4);
-    map.insert(0, 10);
+    let mut map = Tree::<i32, i32, OrderStatistics, true>::new();
 
-    map[&1] = 4;
-
-    println!("{}", map.len());
+    map.insert(1, 3);
+    map.insert(2, 4);
+    map.insert(-1, 5);
+    map.insert(1, 6);
+    map.insert(7, 8);
+    map[&7] = 2;
 
     for node in map.iter() {
-        println!("{} {}", node.key(), node.value());
+        println!(
+            "map[{key}] = {value}",
+            key = node.key(),
+            value = node.value()
+        );
     }
 
-    println!("map[1] = {}", map[&1]);
-    println!("map[#2] = {}", map.find_by_rank(2).unwrap().value());
-
-    let mut set = Tree::<i32, (), OrderStatistics>::new();
-
-    set.insert(3, ());
-    set.insert(1, ());
-    set.insert(4, ());
-    set.insert(4, ());
-    set.insert(5, ());
-
-    for node in set.iter() {
-        println!("{}", node.key());
+    {
+        let node = map.find_by_rank(3).unwrap();
+        println!(
+            "map[#3] = map[{key}] = {value}",
+            key = node.key(),
+            value = node.value()
+        );
     }
 
-    fn upper_bound(node: Option<&Node<i32, (), OrderStatistics, false>>, key: i32) -> usize {
+    map.remove_by_rank(0);
+    for node in map.iter() {
+        println!(
+            "map[{key}] = {value}",
+            key = node.key(),
+            value = node.value()
+        );
+    }
+
+    fn upper_bound(node: Option<&Node<i32, i32, OrderStatistics, true>>, key: i32) -> usize {
         node.map_or(0, |node| {
             if node.key() <= &key {
                 upper_bound(node.right(), key)
@@ -43,7 +51,7 @@ fn main() {
             }
         })
     }
-    fn lower_bound(node: Option<&Node<i32, (), OrderStatistics, false>>, key: i32) -> usize {
+    fn lower_bound(node: Option<&Node<i32, i32, OrderStatistics, true>>, key: i32) -> usize {
         node.map_or(0, |node| {
             if node.key() < &key {
                 lower_bound(node.right(), key)
@@ -55,26 +63,9 @@ fn main() {
         })
     }
 
-    println!("3: {}", lower_bound(set.root(), 3));
-    println!("4: {}", upper_bound(set.root(), 4));
+    println!("{}", upper_bound(map.root(), 7) - lower_bound(map.root(), 2));
 
-    let mut map = Map::<i32, i32>::new();
+    let other_map: Map<i32, i32> = [(1, 2), (3, 2), (-1, 7), (0, 4)].into_iter().collect();
 
-    map.insert(3, 4);
-    map.insert(2, 5);
-    map.insert(7, 2);
-    map.insert(2, 7);
-
-    for node in map.iter() {
-        println!("map[{}] = {}", node.key(), node.value());
-    }
-
-    let mut seq = Sequence::<i32>::new();
-
-    seq.push_right(2);
-    seq.push_right(3);
-    seq.push_right(1);
-    seq.insert_at_rank(1, 4);
-
-    println!("{:?}", seq.iter().map(|node| node.value()).collect::<Vec<_>>());
+    println!("{:?}", other_map.iter().map(|node| (node.key(), node.value())).collect::<Vec<_>>());
 }
